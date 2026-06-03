@@ -94,11 +94,33 @@ Cleo Legal Data indexes **legal documents, treaties, customs schedules, tariff h
 
 ## Quick start
 
-You need a Cleo Legal Data API key. Get one at <https://legaldata-public.cleolabs.co/pricing> (self-serve Stripe Checkout).
+> **Using Claude.ai (web/desktop)?** You don't need this package. Open Claude.ai → **Connectors** → add `https://api.legaldata.cleolabs.co/mcp` and sign in via magic link. Done. This package is for **Cursor, Cline, Continue, Claude Code CLI**, and any other MCP client that doesn't yet support remote OAuth Connectors.
+
+There are two ways to authenticate. Pick whichever fits your workflow:
+
+| Mode | When to use | What you need |
+|---|---|---|
+| **OAuth 2.1** *(default, recommended)* | Interactive use on a workstation with a browser | Nothing — a browser opens for sign-in on first run; tokens cached under `~/.mcp-auth/` and rotated automatically |
+| **Static API key** | CI, headless servers, automation, multi-account | An `ld_live_…` key from <https://legaldata-public.cleolabs.co/pricing> |
 
 ### Claude Desktop
 
 Edit your `claude_desktop_config.json` (Settings → Developer → Edit Config):
+
+**OAuth (no key)** — a browser opens on first launch for sign-in:
+
+```json
+{
+  "mcpServers": {
+    "cleo-legal": {
+      "command": "npx",
+      "args": ["-y", "@cleo-labs/legal-mcp@latest"]
+    }
+  }
+}
+```
+
+**Static API key** — drop your `ld_live_…` in env:
 
 ```json
 {
@@ -118,39 +140,11 @@ Restart Claude. The 39 Cleo Legal tools appear in the tools menu.
 
 ### Cursor
 
-Add to `~/.cursor/mcp.json` (or workspace `.cursor/mcp.json`):
-
-```json
-{
-  "mcpServers": {
-    "cleo-legal": {
-      "command": "npx",
-      "args": ["-y", "@cleo-labs/legal-mcp@latest"],
-      "env": {
-        "CLEO_API_KEY": "ld_live_xxxxxxxxxxxxx"
-      }
-    }
-  }
-}
-```
+Add to `~/.cursor/mcp.json` (or workspace `.cursor/mcp.json`) — same JSON as above. OAuth mode just omits the `env` block.
 
 ### Cline / Continue / any MCP client
 
-The package speaks **standard MCP over stdio** — point any compliant client at the binary `legal-mcp` (or `npx -y @cleo-labs/legal-mcp@latest`) with `CLEO_API_KEY` in the environment:
-
-```json
-{
-  "mcpServers": {
-    "cleo-legal": {
-      "command": "npx",
-      "args": ["-y", "@cleo-labs/legal-mcp@latest"],
-      "env": {
-        "CLEO_API_KEY": "ld_live_xxxxxxxxxxxxx"
-      }
-    }
-  }
-}
-```
+The package speaks **standard MCP over stdio**. Point any compliant client at `npx -y @cleo-labs/legal-mcp@latest`. OAuth is used by default; set `CLEO_API_KEY=ld_live_…` in the environment to force the static-key mode instead.
 
 ---
 
@@ -174,8 +168,10 @@ Once installed, try these in your AI client:
 
 | Env var | Default | Description |
 |---|---|---|
-| `CLEO_API_KEY` | — *(required)* | API key starting with `ld_live_`. |
+| `CLEO_API_KEY` | — *(optional)* | Static API key starting with `ld_live_`. When set, skips OAuth and authenticates via `Authorization: Bearer`. Recommended for CI/headless. |
 | `CLEO_LEGAL_URL` | `https://api.legaldata.cleolabs.co/mcp` | Override for staging or self-hosted deployments. |
+
+When `CLEO_API_KEY` is **not** set, the proxy falls back to the OAuth 2.1 + PKCE + Dynamic Client Registration flow against the discovery document at <https://api.legaldata.cleolabs.co/.well-known/oauth-authorization-server>. The browser opens once; refresh tokens live for 90 days and rotate automatically.
 
 ---
 
@@ -184,23 +180,23 @@ Once installed, try these in your AI client:
 This package is a thin stdio→SSE proxy. The actual MCP server runs on **`https://api.legaldata.cleolabs.co/mcp`** as part of the Cleo Legal Data API. All authorization, rate limiting, and data fetching happen server-side — your local client only forwards JSON-RPC messages over a streaming HTTP connection.
 
 ```
-┌──────────────────────┐    stdio    ┌──────────────┐    SSE+Bearer   ┌─────────────────────────────┐
-│ Claude / Cursor / …  │ ◀────────▶ │  legal-mcp   │ ◀─────────────▶ │ api.legaldata.cleolabs.co  │
-└──────────────────────┘             └──────────────┘                 └─────────────────────────────┘
-                                       (this pkg)                       (39 tools, GET-mostly)
+┌──────────────────────┐    stdio    ┌──────────────┐   SSE+OAuth/Bearer   ┌─────────────────────────────┐
+│ Cursor / Cline / CLI │ ◀────────▶ │  legal-mcp   │ ◀──────────────────▶ │ api.legaldata.cleolabs.co  │
+└──────────────────────┘             └──────────────┘                      └─────────────────────────────┘
+                                       (this pkg)                            (39 tools, GET-mostly)
 ```
 
-Under the hood, this CLI shells out to the official `mcp-remote@0.1` proxy from Anthropic, which already handles SSE reconnect, request framing, and stdio bridging.
+Under the hood, this CLI shells out to `mcp-remote@0.1`, which handles SSE reconnect, request framing, stdio bridging, and the full OAuth 2.1 + PKCE + Dynamic Client Registration flow against the API's `/.well-known/oauth-authorization-server` document.
 
 ---
 
 ## Security
 
-- The API key never leaves your machine in plaintext — it's sent as an HTTP `Authorization: Bearer` header over TLS to the Cleo Legal Data endpoint.
+- In OAuth mode, no secrets ever touch the package — `mcp-remote` performs PKCE and stores rotated tokens under `~/.mcp-auth/` with file permissions `0600`.
+- In static-key mode, the key is sent as an HTTP `Authorization: Bearer` header over TLS only; it is never logged.
 - All tools are **read-only** from a data-mutation perspective — none of them write to your account.
-- **Note on quota**: `compliance_check` consumes **5 quota units** per call (versus 1 for most other tools). Other tools consume 1 unit each. Monitor usage via your dashboard at <https://legaldata-public.cleolabs.co>.
-- Scope is restricted to your subscription tier — the bearer token is your auth boundary.
-- Revoke a leaked key any time from your account dashboard.
+- **Note on quota**: `compliance_check` consumes **5 quota units** per call (versus 1 for most other tools). Monitor usage at <https://legaldata-public.cleolabs.co>.
+- Revoke a leaked key (or an OAuth connector) any time from your account dashboard.
 
 ---
 

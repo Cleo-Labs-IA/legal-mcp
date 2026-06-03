@@ -15,10 +15,16 @@
  *   - Rate history (get_rate_history, list_rate_changes_by_year)
  *   - Sanctions (search_sanctions_by_authority, get_sanctions_overlap, …)
  *
- * Usage:
- *   CLEO_API_KEY=ld_live_xxx npx -y @cleo-labs/legal-mcp@latest
+ * Two ways to authenticate:
  *
- * Get an API key at https://legaldata-public.cleolabs.co/pricing
+ *   1. OAuth 2.1 (default — no API key needed):
+ *        npx -y @cleo-labs/legal-mcp@latest
+ *      A browser opens for sign-in via magic link; tokens are cached
+ *      under ~/.mcp-auth/ and rotated automatically.
+ *
+ *   2. Static API key (CI / headless):
+ *        CLEO_API_KEY=ld_live_xxx npx -y @cleo-labs/legal-mcp@latest
+ *      Get a key at https://legaldata-public.cleolabs.co/pricing
  *
  * Override the endpoint (staging / self-host) via CLEO_LEGAL_URL.
  */
@@ -38,38 +44,31 @@ function bail(msg: string, code = 0): never {
   process.exit(code);
 }
 
-const apiKey = process.env.CLEO_API_KEY?.trim();
-if (!apiKey) {
-  bail(
-    'Missing CLEO_API_KEY environment variable. ' +
-      'Get yours at https://legaldata-public.cleolabs.co/pricing',
-  );
-}
-if (!apiKey.startsWith(KEY_PREFIX)) {
-  bail(
-    `Invalid CLEO_API_KEY — expected prefix '${KEY_PREFIX}'. ` +
-      'Get a valid key at https://legaldata-public.cleolabs.co/pricing',
-  );
-}
-
 const url = (process.env.CLEO_LEGAL_URL || DEFAULT_URL).replace(/\/+$/, '');
+const apiKey = process.env.CLEO_API_KEY?.trim();
 
-log(`connecting to ${url}`);
+const remoteArgs: string[] = ['-y', 'mcp-remote@0.1', url];
 
-// We shell out to the official Anthropic `mcp-remote` proxy because it
-// already handles SSE reconnect, request framing, and stdio bridging.
-// Pinned to a minor range to avoid surprise upgrades.
-const child = spawn(
-  'npx',
-  [
-    '-y',
-    'mcp-remote@0.1',
-    url,
-    '--header',
-    `Authorization: Bearer ${apiKey}`,
-  ],
-  { stdio: 'inherit' },
-);
+if (apiKey) {
+  if (!apiKey.startsWith(KEY_PREFIX)) {
+    bail(
+      `Invalid CLEO_API_KEY — expected prefix '${KEY_PREFIX}'. ` +
+        'Get a valid key at https://legaldata-public.cleolabs.co/pricing, ' +
+        'or unset CLEO_API_KEY to authenticate via OAuth instead.',
+    );
+  }
+  remoteArgs.push('--header', `Authorization: Bearer ${apiKey}`);
+  log(`using static API key, connecting to ${url}`);
+} else {
+  log(`no CLEO_API_KEY set — falling back to OAuth at ${url}`);
+  log('a browser window will open for sign-in on first run');
+}
+
+// We shell out to the official `mcp-remote` proxy because it already
+// handles SSE reconnect, request framing, stdio bridging, and the full
+// OAuth 2.1 + PKCE + Dynamic Client Registration flow against the
+// /.well-known/oauth-authorization-server discovery document.
+const child = spawn('npx', remoteArgs, { stdio: 'inherit' });
 
 child.on('error', (err) => bail(`failed to spawn mcp-remote: ${err.message}`, 1));
 
