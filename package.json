@@ -1,0 +1,66 @@
+{
+  "name": "@cleo-labs/legal-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for the Cleo Legal Data API — search legal documents, classify HS codes, compute landed cost, screen sanctions, walk amendment graphs, and check dual-use exports from Claude Desktop, Cursor, Cline, and other MCP clients.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "legal",
+    "regulatory",
+    "customs",
+    "HS-code",
+    "sanctions",
+    "dual-use",
+    "tariff",
+    "compliance",
+    "claude",
+    "cursor",
+    "cline",
+    "anthropic",
+    "eur-lex",
+    "legifrance",
+    "treaties"
+  ],
+  "homepage": "https://github.com/Cleo-Labs-IA/legal-mcp",
+  "bugs": "https://github.com/Cleo-Labs-IA/legal-mcp/issues",
+  "license": "MIT",
+  "author": {
+    "name": "Naomie Halioua",
+    "email": "contact@cleolabs.co",
+    "url": "https://cleolabs.co"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Cleo-Labs-IA/legal-mcp.git"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "legal-mcp": "dist/index.js",
+    "cleo-legal-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node -e \"require('fs').chmodSync('dist/index.js', 0o755)\"",
+    "prepack": "npm run build",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
