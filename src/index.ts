@@ -5,12 +5,14 @@
  * Connects a local MCP client (Claude Desktop, Cursor, Cline, …) to the
  * Cleo Legal Data API remote MCP server at https://api.legaldata.cleolabs.co/mcp.
  *
- * The remote server exposes 39 tools spanning:
+ * The remote server exposes 46 tools spanning:
  *   - Search & documents (search_legal, get_document, list_documents, …)
  *   - Coverage & changes (get_coverage, coverage_my_gaps, get_changes, …)
  *   - Translation & utility (translate_text, health, list_endpoints, describe_endpoint)
  *   - Customs (customs_lookup, customs_landed_cost, customs_dual_use_check, …)
- *   - Compliance & profiles (compliance_check, get_country_profile, …)
+ *   - Classification, batches & human review (classify_customs_item,
+ *     submit_classification_batch, list_classifications, review_classification, …)
+ *   - Compliance & profiles (compliance_check — the full decision — get_country_profile, …)
  *   - Amendments (search_amendments, get_law_as_of, traverse_amendment_graph, …)
  *   - Rate history (get_rate_history, list_rate_changes_by_year)
  *   - Sanctions (search_sanctions_by_authority, get_sanctions_overlap, …)
