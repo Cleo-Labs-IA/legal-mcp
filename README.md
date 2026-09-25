@@ -9,7 +9,7 @@ Cleo Legal Data indexes **legal documents, treaties, customs schedules, tariff h
 
 ---
 
-## What you get — 39 tools
+## What you get — 46 tools
 
 ### Search & documents (10)
 
@@ -56,11 +56,25 @@ Cleo Legal Data indexes **legal documents, treaties, customs schedules, tariff h
 | `customs_landed_cost` | Landed-cost calculator |
 | `customs_reverse_classify` | HS code → defensible product description |
 
+### Customs classification, batches & human review (7)
+
+Structured classification that asks before it guesses: when product facts are missing it returns `needs_information` with the questions to answer, never a code presented as final.
+
+| Tool | Purpose |
+|---|---|
+| `classify_customs_item` | Classify one item, or a 2-10 component kit, from structured facts; returns candidates with evidence, or `needs_information` + questions (1 unit + 1 per component, max 11) |
+| `get_classification_dossier` | Audit dossier of a persisted classification: sources, evidence, dataset versions, review state |
+| `submit_classification_batch` | Up to 2,000 catalog items as one asynchronous, idempotent job |
+| `get_classification_batch` | Job progress and per-item outcomes |
+| `get_classification_batch_item_dossier` | Audit dossier of one batch item |
+| `list_classifications` | Your account's persisted classifications (every key of the account sees the same history) |
+| `review_classification` | Record a human decision (`approved`, `rejected`, `changes_requested`) with optimistic locking; an approved code stays locked until changes are requested |
+
 ### Compliance & profiles (5)
 
 | Tool | Purpose |
 |---|---|
-| `compliance_check` | Composite compliance check (consumes 5 quota units) |
+| `compliance_check` | The full decision in one call: classification (facts, kits, `as_of`), then obligations, dual-use, duties and landed cost on the same code and route. Returns `decision.readiness` (`ready_for_review`, `needs_information`, `needs_review`, `blocked`), the blockers behind it, per-step status and limitations. Advisory, never a binding customs ruling (5 quota units) |
 | `eaeu_parallel_import` | EAEU parallel-import rules |
 | `lookup_standard` | GOST / EAEU standards lookup |
 | `get_country_profile` | Per-country regulatory profile |
@@ -95,6 +109,29 @@ Cleo Legal Data indexes **legal documents, treaties, customs schedules, tariff h
 ## Quick start
 
 > **Using Claude.ai (web/desktop)?** You don't need this package. Open Claude.ai → **Connectors** → add `https://api.legaldata.cleolabs.co/mcp` and sign in via magic link. Done. This package is for **Cursor, Cline, Continue, Claude Code CLI**, and any other MCP client that doesn't yet support remote OAuth Connectors.
+
+> **Package not on npm yet.** `@cleo-labs/legal-mcp` is not published to the npm registry, so the `npx @cleo-labs/legal-mcp` commands below fail today. Until it is, connect directly to the remote server — it is the same server this package proxies:
+>
+> **Claude Code CLI**
+> ```bash
+> claude mcp add --transport http cleo-legal https://api.legaldata.cleolabs.co/mcp \
+>   --header "Authorization: Bearer $CLEO_API_KEY"
+> ```
+>
+> **Claude Desktop, Cursor, Cline, any stdio client** (uses the official `mcp-remote` proxy):
+> ```json
+> {
+>   "mcpServers": {
+>     "cleo-legal": {
+>       "command": "npx",
+>       "args": ["-y", "mcp-remote@0.1", "https://api.legaldata.cleolabs.co/mcp",
+>                "--header", "Authorization: Bearer ${CLEO_API_KEY}"],
+>       "env": { "CLEO_API_KEY": "ld_live_xxxxxxxxxxxxx" }
+>     }
+>   }
+> }
+> ```
+> Omit the `--header` pair and the `env` block to sign in with OAuth in the browser instead.
 
 There are two ways to authenticate. Pick whichever fits your workflow:
 
@@ -136,7 +173,7 @@ Edit your `claude_desktop_config.json` (Settings → Developer → Edit Config):
 }
 ```
 
-Restart Claude. The 39 Cleo Legal tools appear in the tools menu.
+Restart Claude. The 46 Cleo Legal tools appear in the tools menu.
 
 ### Cursor
 
@@ -159,6 +196,8 @@ Once installed, try these in your AI client:
 > *"Show the amendment graph for EU Regulation 2019/1020 — give me everything it supersedes, transposes, or conflicts with, depth 2."*
 
 > *"Was Article 5 of the French Code de la consommation in force on 2018-06-12? Return the text as it stood that day."*
+
+> *"Check this for import into France from China and tell me what is still missing before I can file: cordless drill, 18 V, lithium battery included, plastic housing."* (uses `compliance_check`; expect `needs_information` questions first)
 
 > *"Run a dual-use export check for HS 8542.31 (microprocessors) shipped from Germany to Russia. Cite the regulation."*
 
@@ -183,7 +222,7 @@ This package is a thin stdio→SSE proxy. The actual MCP server runs on **`https
 ┌──────────────────────┐    stdio    ┌──────────────┐   SSE+OAuth/Bearer   ┌─────────────────────────────┐
 │ Cursor / Cline / CLI │ ◀────────▶ │  legal-mcp   │ ◀──────────────────▶ │ api.legaldata.cleolabs.co  │
 └──────────────────────┘             └──────────────┘                      └─────────────────────────────┘
-                                       (this pkg)                            (39 tools, GET-mostly)
+                                       (this pkg)                            (46 tools, read-mostly)
 ```
 
 Under the hood, this CLI shells out to `mcp-remote@0.1`, which handles SSE reconnect, request framing, stdio bridging, and the full OAuth 2.1 + PKCE + Dynamic Client Registration flow against the API's `/.well-known/oauth-authorization-server` document.
@@ -194,7 +233,7 @@ Under the hood, this CLI shells out to `mcp-remote@0.1`, which handles SSE recon
 
 - In OAuth mode, no secrets ever touch the package — `mcp-remote` performs PKCE and stores rotated tokens under `~/.mcp-auth/` with file permissions `0600`.
 - In static-key mode, the key is sent as an HTTP `Authorization: Bearer` header over TLS only; it is never logged.
-- All tools are **read-only** from a data-mutation perspective — none of them write to your account.
+- Almost every tool is **read-only**. Three write to your own account only: `review_classification` (a human review decision), `submit_classification_batch` (a job) and `classify_customs_item` when you pass `persist: true`. None of them writes to any other system; connectors that write back to Shopify or an ERP live in the SDK CLI and only write human-approved codes by default.
 - **Note on quota**: `compliance_check` consumes **5 quota units** per call (versus 1 for most other tools). Monitor usage at <https://legaldata-public.cleolabs.co>.
 - Revoke a leaked key (or an OAuth connector) any time from your account dashboard.
 
